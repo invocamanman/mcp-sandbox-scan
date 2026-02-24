@@ -1,4 +1,4 @@
-import type { ProbeConfig, OrchestratorConfig } from "../types.js";
+import type { ProbeConfig } from "../types.js";
 
 // Lazy-load Anthropic SDK — only import when honeypot is actually running
 let _anthropicClient: unknown = null;
@@ -21,10 +21,6 @@ export const DEFAULT_PROBE_CONFIG: ProbeConfig = {
   timeoutMs: 30_000,
 };
 
-export const DEFAULT_ORCHESTRATOR_CONFIG: OrchestratorConfig = {
-  model: process.env.ORCHESTRATOR_MODEL ?? "claude-sonnet-4-5-20250929",
-  timeoutMs: 30_000,
-};
 
 export type AnthropicContent =
   | { type: "text"; text: string }

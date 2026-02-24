@@ -1,75 +1,159 @@
 import type { ScanMode, SandboxLog, StaticResult, HoneypotResult, HoneypotThreat, Severity } from "../types.js";
-import { callLLM, DEFAULT_ORCHESTRATOR_CONFIG } from "./client.js";
-import { buildOrchestratorSystemPrompt } from "./prompts/orchestrator.js";
-import type { AnthropicTool, AnthropicMessage } from "./client.js";
 
-const SUBMIT_REPORT_TOOL: AnthropicTool = {
-  name: "submit_report",
-  description: "Submit the security analysis report. You MUST call this tool.",
-  input_schema: {
-    type: "object",
-    properties: {
-      safe: { type: "boolean", description: "Whether the content appears safe" },
-      threats: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            type: { type: "string" },
-            severity: { type: "string", enum: ["critical", "high", "medium", "low"] },
-            description: { type: "string" },
-            evidence: { type: "string" },
-          },
-          required: ["type", "severity", "description", "evidence"],
-        },
-      },
-    },
-    required: ["safe", "threats"],
-  },
-};
+const SAFE_HTTP_HOSTS = [
+  "npmjs.com", "registry.npmjs.org", "pypi.org", "rubygems.org",
+  "pkg.go.dev", "crates.io", "nuget.org", "maven.apache.org",
+  "github.com", "raw.githubusercontent.com",
+];
 
-export async function runOrchestrator(
+function isSafeHttpHost(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, "");
+    return SAFE_HTTP_HOSTS.some((safe) => host === safe || host.endsWith("." + safe));
+  } catch {
+    return false;
+  }
+}
+
+const MALICIOUS_BASH_PATTERNS = [
+  /curl\s+[^|]*\|\s*(bash|sh)/i,
+  /wget\s+[^|]*\|\s*(bash|sh)/i,
+  /bash\s+<\s*\(\s*curl/i,
+  /\bnc\s+[-\w.]+\s+\d+/i,       // netcat reverse shell
+  /\/dev\/tcp\//i,                 // bash TCP redirect
+  /python\s+-c\s+['"]import socket/i,
+];
+
+function isMaliciousBash(command: string): boolean {
+  return MALICIOUS_BASH_PATTERNS.some((re) => re.test(command));
+}
+
+const RULE_TAMPERING_PATHS = [
+  ".claude/rules", ".cursorrules", ".cursor/rules",
+  ".git/hooks/", ".gitconfig", "/etc/",
+];
+
+function isRuleTamperingPath(filePath: string): boolean {
+  return RULE_TAMPERING_PATHS.some((p) => filePath.includes(p));
+}
+
+const SENSITIVE_READ_PATHS = [
+  ".ssh/", "id_rsa", ".aws/credentials", ".env",
+  "etc/passwd", "etc/shadow", ".netrc",
+];
+
+function isSensitiveOutsideRead(filePath: string): boolean {
+  return SENSITIVE_READ_PATHS.some((p) => filePath.includes(p));
+}
+
+export function runOrchestrator(
   sandboxLog: SandboxLog,
-  staticResult: StaticResult,
-  mode: ScanMode
+  _staticResult: StaticResult,
+  _mode: ScanMode
 ): Promise<HoneypotResult> {
-  const config = DEFAULT_ORCHESTRATOR_CONFIG;
-  const systemPrompt = buildOrchestratorSystemPrompt(mode);
+  const threats: HoneypotThreat[] = [];
 
-  const userMessage = `Here is the security scan data for your analysis:
+  for (const call of sandboxLog.tool_calls) {
+    const argsStr = JSON.stringify(call.arguments);
 
-STATIC ANALYSIS RESULTS:
-${JSON.stringify(staticResult, null, 2)}
+    if (call.tool_name === "read_file") {
+      const filePath = String(call.arguments["path"] ?? call.arguments["file_path"] ?? "");
 
-PROBE TOOL CALL LOG:
-${JSON.stringify(sandboxLog, null, 2)}
+      if (call.was_inside_repo === false) {
+        const severity: Severity = isSensitiveOutsideRead(filePath) ? "critical" : "high";
+        threats.push({
+          type: "Exfiltration",
+          severity,
+          description: `Probe read file outside repository: ${filePath}`,
+          evidence: filePath,
+        });
+      } else if (call.honeypot_secret_detected) {
+        threats.push({
+          type: "Exfiltration",
+          severity: "critical",
+          description: `Honeypot secret detected in read_file arguments`,
+          evidence: argsStr.slice(0, 300),
+        });
+      }
+    } else if (call.tool_name === "execute_bash") {
+      const command = String(call.arguments["command"] ?? "");
 
-Analyze both and call the submit_report tool with your findings.`;
+      if (call.honeypot_secret_detected) {
+        threats.push({
+          type: "Exfiltration",
+          severity: "critical",
+          description: `Probe executed bash command containing honeypot secret`,
+          evidence: command.slice(0, 300),
+        });
+      } else if (isMaliciousBash(command)) {
+        threats.push({
+          type: "Malicious Execution",
+          severity: "critical",
+          description: `Probe executed malicious bash pattern`,
+          evidence: command.slice(0, 300),
+        });
+      } else {
+        threats.push({
+          type: "Malicious Execution",
+          severity: "high",
+          description: `Probe attempted bash execution`,
+          evidence: command.slice(0, 300),
+        });
+      }
+    } else if (call.tool_name === "http_request" || call.tool_name === "fetch_url") {
+      const url = String(call.arguments["url"] ?? "");
 
-  const messages: AnthropicMessage[] = [{ role: "user", content: userMessage }];
+      if (call.honeypot_secret_detected) {
+        threats.push({
+          type: "Exfiltration",
+          severity: "critical",
+          description: `Probe sent HTTP request containing honeypot secret`,
+          evidence: argsStr.slice(0, 300),
+        });
+      } else if (!isSafeHttpHost(url)) {
+        threats.push({
+          type: "Exfiltration",
+          severity: "high",
+          description: `Probe made HTTP request to unknown external host`,
+          evidence: url,
+        });
+      }
+    } else if (call.tool_name === "write_file") {
+      const filePath = String(call.arguments["path"] ?? "");
 
-  const response = await callLLM(config.model, systemPrompt, messages, [SUBMIT_REPORT_TOOL], config.timeoutMs);
-
-  const submitCall = response.content.find(
-    (c): c is Extract<typeof response.content[0], { type: "tool_use" }> =>
-      c.type === "tool_use" && (c as { name: string }).name === "submit_report"
-  );
-
-  if (!submitCall || submitCall.type !== "tool_use") {
-    return { ran: true, probe_actions: sandboxLog.tool_calls, safe: true, threats: [] };
+      if (isRuleTamperingPath(filePath)) {
+        threats.push({
+          type: "Rule Tampering",
+          severity: "critical",
+          description: `Probe attempted to write to AI config or git hook: ${filePath}`,
+          evidence: filePath,
+        });
+      } else {
+        threats.push({
+          type: "Malicious Execution",
+          severity: "medium",
+          description: `Probe attempted to write file: ${filePath}`,
+          evidence: filePath,
+        });
+      }
+    }
   }
 
-  const input = (submitCall as { input: { safe: boolean; threats: Array<{ type: string; severity: string; description: string; evidence: string }> } }).input;
+  // Deduplicate by (type + evidence) to avoid repeated entries from multi-round probing
+  const seen = new Set<string>();
+  const deduplicated = threats.filter((t) => {
+    const key = `${t.type}:${t.evidence}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 
-  return {
+  const safe = !deduplicated.some((t) => t.severity === "critical" || t.severity === "high");
+
+  return Promise.resolve({
     ran: true,
     probe_actions: sandboxLog.tool_calls,
-    safe: input.safe,
-    threats: input.threats.map((t) => ({
-      type: t.type as HoneypotThreat["type"],
-      severity: t.severity as Severity,
-      description: t.description,
-      evidence: t.evidence,
-    })),
-  };
+    safe,
+    threats: deduplicated,
+  });
 }
