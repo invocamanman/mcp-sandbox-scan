@@ -14,9 +14,19 @@ npx mcp-sandbox-sca scan-full /path/to/anything --static
 ANTHROPIC_API_KEY=sk-ant-... npx mcp-sandbox-sca scan-full /path/to/repo
 ```
 
-## MCP Server Configuration
+## Installation
 
-**Full scan** (add to `claude_desktop_config.json` or `.claude/mcp.json`):
+**Claude Code (one command):**
+
+```bash
+# With API key (full honeypot scan)
+claude mcp add security-scanner -e ANTHROPIC_API_KEY=sk-ant-... -- npx mcp-sandbox-sca
+
+# Without API key (static scan only, free)
+claude mcp add security-scanner -- npx mcp-sandbox-sca
+```
+
+**Claude Desktop** (add to `claude_desktop_config.json`):
 
 ```json
 {
@@ -44,6 +54,10 @@ ANTHROPIC_API_KEY=sk-ant-... npx mcp-sandbox-sca scan-full /path/to/repo
   }
 }
 ```
+
+### Getting an Anthropic API Key
+
+Get one at [console.anthropic.com](https://console.anthropic.com). The honeypot uses Claude Haiku — the cheapest model. **$1 of credit covers hundreds of full scans.** If you only scan occasionally, the free tier is likely enough.
 
 ## Scanning Tools
 
