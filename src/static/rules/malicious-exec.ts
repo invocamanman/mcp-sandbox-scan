@@ -1,0 +1,81 @@
+import type { StaticRule } from "../../types.js";
+
+export const maliciousExecRules: StaticRule[] = [
+  {
+    id: "MALEXEC_001",
+    name: "Reverse Shell (bash tcp)",
+    severity: "critical",
+    category: "malicious_execution",
+    pattern: /bash\s+-i\s+>&\s+\/dev\/tcp\//,
+  },
+  {
+    id: "MALEXEC_002",
+    name: "Netcat Reverse Shell",
+    severity: "critical",
+    category: "malicious_execution",
+    pattern: /nc\s+-e\s+/i,
+  },
+  {
+    id: "MALEXEC_003",
+    name: "Python Reverse Shell",
+    severity: "critical",
+    category: "malicious_execution",
+    pattern: /python\s+-c\s+['"]import\s+socket/i,
+  },
+  {
+    id: "MALEXEC_004",
+    name: "Piped Download Execution (curl)",
+    severity: "critical",
+    category: "malicious_execution",
+    pattern: /curl[^|]*\|\s*(bash|sh|python|node|eval)/i,
+  },
+  {
+    id: "MALEXEC_005",
+    name: "Piped Download Execution (wget)",
+    severity: "critical",
+    category: "malicious_execution",
+    pattern: /wget[^|]*\|\s*(bash|sh)/i,
+  },
+  {
+    id: "MALEXEC_006",
+    name: "Eval in Script",
+    severity: "critical",
+    category: "malicious_execution",
+    pattern: /\beval\s*\(/,
+  },
+  {
+    id: "MALEXEC_007",
+    name: "Child Process with String Interpolation",
+    severity: "high",
+    category: "malicious_execution",
+    pattern: /child_process\.exec\s*\(.*\$/,
+  },
+  {
+    id: "MALEXEC_008",
+    name: "new Function with External Input",
+    severity: "high",
+    category: "malicious_execution",
+    pattern: /new\s+Function\s*\(/,
+  },
+  {
+    id: "MALEXEC_009",
+    name: "Hex Escape Obfuscation",
+    severity: "medium",
+    category: "malicious_execution",
+    pattern: /(?:\\x[0-9a-fA-F]{2}){8,}/,
+  },
+  {
+    id: "MALEXEC_010",
+    name: "String.fromCharCode Chain",
+    severity: "medium",
+    category: "malicious_execution",
+    pattern: /String\.fromCharCode\s*\((?:\s*\d+\s*,\s*){5,}/,
+  },
+  {
+    id: "MALEXEC_011",
+    name: "atob with Long String",
+    severity: "medium",
+    category: "malicious_execution",
+    pattern: /atob\s*\(\s*['"][A-Za-z0-9+/]{50,}/,
+  },
+];
