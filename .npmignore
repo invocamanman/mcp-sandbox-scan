@@ -1,0 +1,9 @@
+src/
+test/
+docs/
+bin/
+*.ts
+tsconfig.json
+tsup.config.ts
+.gitignore
+spec.md

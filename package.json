@@ -1,0 +1,39 @@
+{
+  "name": "mcp-sandbox-sca",
+  "version": "0.1.0",
+  "description": "MCP server that scans repos and AI tools for prompt injections, exfiltration, and malicious behavior",
+  "type": "module",
+  "main": "./dist/index.js",
+  "bin": {
+    "mcp-sandbox-sca": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "engines": { "node": ">=18" },
+  "keywords": ["mcp", "security", "prompt-injection", "ai-safety", "llm-security", "honeypot", "sca"],
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.36.0",
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "commander": "^12.0.0",
+    "fast-glob": "^3.3.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^2.0.0"
+  }
+}
