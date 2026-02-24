@@ -68,7 +68,7 @@ Uses **privilege separation** — a single LLM cannot safely read untrusted file
 
 1. **Probe agent** (Haiku — cheap, naive) gets the directory tree and uses `read_file` to explore the repo naturally, exactly like a real AI assistant would. It has honeypot credentials in its environment.
 2. **Hybrid Sandbox** intercepts all tool calls. `read_file` inside the repo returns real content (the Probe must actually read the malicious files to fall for injections). All other tools (bash, network, file writes) are logged but never executed.
-3. **Orchestrator agent** (Sonnet — smarter, isolated) receives only the tool call log — never raw untrusted content. It calls a `submit_report` tool for guaranteed structured output.
+3. **Deterministic log analyzer** classifies the Probe's tool call log — checking for honeypot secret exfiltration, outside-repo reads, bash execution, HTTP requests to unknown hosts, and writes to AI config paths. No second LLM call needed: the sandbox log is already fully structured.
 
 ## What It Detects
 
@@ -110,7 +110,6 @@ mcp-sandbox-sca scan-full <path> [options]
 |----------|-------------|
 | `ANTHROPIC_API_KEY` | Required for LLM honeypot scan |
 | `PROBE_MODEL` | Override probe model (default: `claude-haiku-4-5-20251001`) |
-| `ORCHESTRATOR_MODEL` | Override orchestrator model (default: `claude-sonnet-4-5-20250929`) |
 
 ## The Problem It Solves
 

@@ -105,4 +105,14 @@ program
     }
   });
 
-program.parse();
+// No subcommand → start MCP server (primary usage: npx mcp-sandbox-sca)
+if (process.argv.length === 2) {
+  import("../src/server.js").then(({ startServer }) => {
+    startServer().catch((e: unknown) => {
+      process.stderr.write(`Fatal: ${String(e)}\n`);
+      process.exit(1);
+    });
+  });
+} else {
+  program.parse();
+}
